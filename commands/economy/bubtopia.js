@@ -1,7 +1,9 @@
-const { EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const UserProfile = require('../../schemas/UserProfile');
 const dailyCommand = require('./daily.js');
 const digCommand = require('./dig.js');
+const robCommand = require('./rob.js');
+const shopCommand = require('./shop.js');
 
 const choices = [
   { name: 'Daily Login Bonus', emoji: '📅' },
@@ -52,6 +54,30 @@ module.exports = {
 
     const message = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
+      // Callback to return to main hub
+const returnToHub = async (i) => {
+  // Rebuild the hub embed
+  const hubEmbed = new EmbedBuilder()
+    .setTitle('Welcome to Bubtopia')
+    .setDescription(`A magical place. <:bubux:1431898256840986654> ${userProfile.balance}`)
+    .setColor('Green')
+    .setTimestamp()
+    .setImage('https://cdn.discordapp.com/attachments/354040284708864011/1433265928526631015/bubtopia.PNG?ex=6904106a&is=6902beea&hm=5365dc6b2e4e79d2be08534c4133e902fd49a8ff46169a08ce098340121152a7&');
+
+  // Rebuild the hub buttons
+  const hubButtons = new ActionRowBuilder().addComponents(
+    choices.map(c =>
+      new ButtonBuilder()
+        .setCustomId(c.name)
+        .setLabel(c.name)
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji(c.emoji)
+    )
+  );
+
+  await i.update({ embeds: [hubEmbed], components: [hubButtons] });
+};
+
     const collector = message.createMessageComponentCollector({ time: 300_000 });
 
     collector.on('collect', async i => {
@@ -87,10 +113,25 @@ module.exports = {
         return;
       }
 
-      // ---- OTHER BUTTONS ----
-      if (i.customId === 'Shop') return i.reply({ content: '🛒 Shop coming soon!', ephemeral: true });
+      // ---- SHOP BUTTON ----
+if (i.customId === 'Shop') {
+  // Require the shop command
+  const shopCommand = require('./shop.js');
+
+  // Run the shop command and pass necessary context
+  await shopCommand.run({
+    interaction: i,
+    hubMessage: message,            // the original hub message
+    buildHubEmbed: buildHubEmbed,   // function to rebuild hub embed
+    buildHubButtons: buildHubButtons, // function to rebuild hub buttons
+    userProfile: userProfile
+  });
+  return;
+}
       if (i.customId === 'Casino') return i.reply({ content: '🎰 Welcome to the casino!', ephemeral: true });
-      if (i.customId === 'Robbery') return i.reply({ content: '🥷 Robbery system under construction!', ephemeral: true });
+      if (i.customId === 'Robbery') {
+  await robCommand.run({ interaction: i });
+}
     });
   },
 };

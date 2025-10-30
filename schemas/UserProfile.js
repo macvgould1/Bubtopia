@@ -12,6 +12,10 @@ const userProfileSchema = new Schema({
     lastDailyCollected: {
         type: Date,
     },
+    digBonus: {
+        type: Number,
+        default: 0,
+    },
 },
     { timestamps: true }
 );

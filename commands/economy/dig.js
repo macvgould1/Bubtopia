@@ -44,7 +44,7 @@ async function startMining(interaction, returnCallback) {
       return i.reply({ content: "This isn't your mine!", ephemeral: true });
 
     if (i.customId === 'Dig') {
-      const earned = getRandomNumber(1, 10);
+      const earned = getRandomNumber(1, 10) + (userProfile.digBonus || 0);
       userProfile.balance += earned;
       await userProfile.save();
 
