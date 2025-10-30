@@ -14,7 +14,7 @@ async function startMining(interaction, returnCallback) {
   let embed = new EmbedBuilder()
     .setTitle('The Bub Mines')
     .setDescription(`You have descended deep below the bub shaft.`)
-    .setColor('White')
+    .setColor('Green')
     .setTimestamp()
     .setImage(
       'https://cdn.discordapp.com/attachments/354040284708864011/1432626661496717342/bubmine2.png?ex=6901bd0d&is=69006b8d&hm=51e03dff1bcc07dd642eb24401dafcb93443fcd31c786a0f86ba93bffe3a99ee&'
@@ -29,7 +29,7 @@ async function startMining(interaction, returnCallback) {
 
   const returnButton = new ButtonBuilder()
     .setCustomId('ReturnHub')
-    .setLabel('Return to Hub')
+    .setLabel('Return to Bub')
     .setStyle(ButtonStyle.Primary)
     .setEmoji('🏠');
 
@@ -41,15 +41,16 @@ async function startMining(interaction, returnCallback) {
 
   collector.on('collect', async i => {
     if (i.user.id !== userId)
-      return i.reply({ content: "This isn't your mine!", ephemeral: true });
+      return i.reply({ content: "Get out me bub mines!", ephemeral: true });
 
     if (i.customId === 'Dig') {
-      const earned = getRandomNumber(1, 10) + (userProfile.digBonus || 0);
+      const baseEarned = getRandomNumber(1, 10);
+      const earned = baseEarned + (userProfile.digBonus || 0);
       userProfile.balance += earned;
       await userProfile.save();
 
       embed.setDescription(
-        `You found <:bubux:1431898256840986654> ${earned}!\nTotal: <:bubux:1431898256840986654> ${userProfile.balance}`
+        `You earned <:bubux:1431898256840986654> ${baseEarned} +  <:bubux:1431898256840986654> ${userProfile.digBonus}!\nTotal: <:bubux:1431898256840986654> ${userProfile.balance}`
       );
 
       await i.update({ embeds: [embed], components: [row] });

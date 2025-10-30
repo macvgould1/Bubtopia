@@ -26,6 +26,7 @@ module.exports = {
         `Current dig bonus: +${userProfile.digBonus || 0}`
       )
       .setColor('Blue')
+      .setImage('https://cdn.discordapp.com/attachments/354040284708864011/1433312128923865191/goodshop.jpg?ex=69043b71&is=6902e9f1&hm=6dacf9868c558c03fa862be3055d88987ed9a8082919c09fc95f038b1dbe2d0e&')
       .setTimestamp();
 
     // Buttons: purchase dig upgrade + return to hub

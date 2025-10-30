@@ -18,24 +18,29 @@ module.exports = {
   run: async ({ interaction }) => {
     const userId = interaction.user.id;
 
-    // fetch all users except yourself
-    const allUsers = await UserProfile.find({ userId: { $ne: userId } });
+// fetch all users except yourself
+const allUsers = await UserProfile.find({ userId: { $ne: userId } });
 
-    if (allUsers.length === 0) {
-      return interaction.reply({ content: "No users available to rob!", flags: 64 });
-    }
+if (allUsers.length === 0) {
+  return interaction.reply({ content: "No users available to rob!", flags: 64 });
+}
 
-    const usersToRob = allUsers.slice(0, 25);
-    const options = usersToRob.map(u =>
-      new StringSelectMenuOptionBuilder()
-        .setLabel(`User ${u.userId}`) // replace with username if you have it
-        .setValue(u.userId)
-    );
+// Deduplicate users by userId
+const uniqueUsers = [...new Map(allUsers.map(u => [u.userId, u])).values()];
 
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId('rob-user')
-      .setPlaceholder('Select a user to rob')
-      .addOptions(options);
+// Take only up to 25 users for Discord select menu limit
+const usersToRob = uniqueUsers.slice(0, 25);
+
+const options = usersToRob.map(u =>
+  new StringSelectMenuOptionBuilder()
+    .setLabel(`User ${u.userName}`) // use whatever username or display you want
+    .setValue(u.userId)
+);
+
+const selectMenu = new StringSelectMenuBuilder()
+  .setCustomId('rob-user')
+  .setPlaceholder('Select a user to rob')
+  .addOptions(options);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
