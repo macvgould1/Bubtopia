@@ -1,4 +1,9 @@
-const { EmbedBuilder } = require('discord.js');
+const {
+  EmbedBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle
+} = require('discord.js');
 const UserProfile = require('../../schemas/UserProfile');
 
 module.exports = {
@@ -7,89 +12,79 @@ module.exports = {
     description: 'Open the shop',
   },
 
-  run: async ({ interaction, hubMessage, userProfile }) => {
+  run: async ({ interaction, hubMessage, buildHubEmbed, buildHubButtons, userProfile }) => {
     if (!interaction.inGuild()) {
       return interaction.reply({ content: "You can only run this command in a server.", ephemeral: true });
     }
 
-    const items = [
-      { name: "Dig Upgrade", desc: `+1 per dig press`, price: 75 },
-      { name: "Super Shovel", desc: "Dig faster than ever!", price: 150 },
-      { name: "Mega Pickaxe", desc: "Boost your mining power!", price: 300 }
-    ];
+    // Build shop embed
+    const shopEmbed = new EmbedBuilder()
+      .setTitle('Dealmaster Dougie\'s Bargain Barn')
+      .setDescription(
+        `Welcome to the shop! You have <:bubux:1431898256840986654> ${userProfile.balance}.\n\n` +
+        `Upgrade available:\n- Dig Upgrade: +1 per dig press (Cost: 75 bubux)\n` +
+        `Current dig bonus: +${userProfile.digBonus || 0}`
+      )
+      .setColor('Blue')
+      .setImage('https://cdn.discordapp.com/attachments/354040284708864011/1433350344355610674/goodshop.png?ex=69045f08&is=69030d88&hm=e6575099d63c33423e196bd7c60223238ea0f64447808f7e16dd17806409c0e0&')
+      .setTimestamp();
 
-    // Build components (Component V2)
-    const components = items.flatMap((item, index) => [
-      {
-        type: 9, // Row for item
-        id: index + 1,
-        components: [
-          {
-            type: 10, // Text block
-            id: index + 100,
-            content: `**${item.name}**\n- ${item.desc}`,
-          },
-        ],
-        accessory: {
-          type: 2, // Button
-          id: index + 200,
-          style: 3,
-          label: `${item.price}`,
-          custom_id: `buy:${item.name}`,
-          emoji: { name: "bubux", id: "1431898256840986654" },
-          disabled: false
-        },
-      },
-      {
-        type: 14, // Divider
-        id: index + 300,
-        divider: true,
-        spacing: 1
-      }
-    ]);
+    // Buttons: purchase dig upgrade + return to hub
+    const purchaseUpgradeBtn = new ButtonBuilder()
+      .setCustomId('PurchaseDigUpgrade')
+      .setLabel('Purchase Dig Upgrade (+1 per dig)')
+      .setStyle(ButtonStyle.Primary);
 
-    // Add footer/page info as a final text block
-    components.push({
-      type: 10,
-      id: 999,
-      content: `Your balance: <:bubux:1431898256840986654> ${userProfile.balance}`
-    });
+    const returnHubBtn = new ButtonBuilder()
+      .setCustomId('ReturnToHub')
+      .setLabel('Return to Bubtopia')
+      .setStyle(ButtonStyle.Secondary);
 
-    // Send or edit hub message with Component V2
-    await hubMessage.edit({
-      content: "### Dealmaster Dougie's Bargain Barn\nClick a button to purchase an item!",
-      components: components,
-      use_component_v2: true
-    });
+    const row = new ActionRowBuilder().addComponents(purchaseUpgradeBtn, returnHubBtn);
 
-    await interaction.deferUpdate();
+    // Edit the original hub message with the shop embed
+    await hubMessage.edit({ embeds: [shopEmbed], components: [row] });
+    await interaction.deferUpdate(); // acknowledge button press silently
 
-    // Component collector
+    // Collector for shop buttons
     const collector = hubMessage.createMessageComponentCollector({ time: 300_000 });
 
-    collector.on('collect', async i => {
+    collector.on('collect', async (i) => {
       if (i.user.id !== userProfile.userId) return i.reply({ content: "This isn't your shop!", ephemeral: true });
 
-      if (i.customId.startsWith("buy:")) {
-        const itemName = i.customId.split(":")[1];
-        const item = items.find(it => it.name === itemName);
+      // PURCHASE DIG UPGRADE
+      if (i.customId === 'PurchaseDigUpgrade') {
+        if (userProfile.balance < 75) {
+          await i.reply({ content: 'Not enough bubux!', ephemeral: true });
+          return;
+        }
 
-        if (!item) return i.reply({ content: "Item not found.", ephemeral: true });
-        if (userProfile.balance < item.price) return i.reply({ content: "Not enough bubux!", ephemeral: true });
-
-        // Deduct price and apply effect (example: dig bonus for Dig Upgrade)
-        userProfile.balance -= item.price;
-        if (itemName === "Dig Upgrade") userProfile.digBonus = (userProfile.digBonus || 0) + 1;
+        userProfile.balance -= 75;
+        userProfile.digBonus = (userProfile.digBonus || 0) + 1;
         await userProfile.save();
 
-        await i.reply({ content: `You purchased **${itemName}** for ${item.price} bubux!`, ephemeral: true });
+        // Update shop embed with new balance and dig bonus
+        const updatedEmbed = EmbedBuilder.from(shopEmbed)
+          .setDescription(
+            `Welcome to the shop! You have <:bubux:1431898256840986654> ${userProfile.balance}.\n\n` +
+            `Upgrade available:\n- Dig Upgrade: +1 per dig press (Cost: 75 bubux)\n` +
+            `Current dig bonus: +${userProfile.digBonus}`
+          );
 
-        // Update balance display
-        const balanceBlock = components.find(c => c.type === 10 && c.id === 999);
-        if (balanceBlock) balanceBlock.content = `Your balance: <:bubux:1431898256840986654> ${userProfile.balance}`;
+        await i.update({ embeds: [updatedEmbed], components: [row] });
+        return;
+      }
 
-        await hubMessage.edit({ components: components });
+      // RETURN TO HUB
+      if (i.customId === 'ReturnToHub') {
+        // Restore original hub embed and buttons
+        await hubMessage.edit({
+          embeds: [buildHubEmbed()],
+          components: [buildHubButtons()]
+        });
+        await i.deferUpdate(); // prevent "interaction already acknowledged" error
+        collector.stop(); // stop the shop collector
       }
     });
-  }
+  },
 };
