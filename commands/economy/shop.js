@@ -6,79 +6,70 @@ export const data = {
   description: 'Open the shop'
 };
 
-export async function run({ interaction, hubMessage, userProfile }) {
+// Exported function so Bubtopia can call it
+export async function openShop(interaction, userProfile, returnCallback) {
   if (!interaction.inGuild()) {
-    return interaction.reply({ content: "You can only run this command in a server.", ephemeral: true });
+    return interaction.reply({
+      content: "You can only run this command in a server.",
+      ephemeral: true
+    });
   }
 
-  // Shop items
+  // Shop inventory
   const items = [
     { name: "Dig Upgrade", desc: "+1 per dig press", price: 75 },
     { name: "Super Shovel", desc: "Dig faster than ever!", price: 150 },
     { name: "Mega Pickaxe", desc: "Boost your mining power!", price: 300 }
   ];
 
-  // Build shop components
-  const components = items.flatMap((item, index) => [
+  // Build item components
+  const itemBlocks = items.flatMap((item, index) => [
     {
-      type: 9, // Section row
+      type: 9,
       id: index + 1,
       components: [
         {
-          type: 10, // Text block
+          type: 10,
           id: index + 100,
-          content: `**${item.name}**\n- ${item.desc}`,
+          content: `**${item.name}**\n${item.desc}`,
         },
       ],
       accessory: {
-        type: 2, // Button
+        type: 2,
         id: index + 200,
-        style: 1, // Primary
+        style: 1,
         label: `${item.price}`,
         custom_id: `buy:${item.name}`,
-        emoji: { name: "bubux", id: "1431898256840986654" },
-        disabled: false
+        emoji: { name: "bubux", id: "1431898256840986654" }
       },
     },
-    {
-      type: 14, // Divider
-      id: index + 300,
-      divider: true,
-      spacing: 1
-    }
+    { type: 14, id: index + 300 }
   ]);
 
-  // Add balance display
-  components.push({
-    type: 10,
-    id: 999,
-    content: `Your balance: <:bubux:1431898256840986654> ${userProfile.balance}`
-  });
-
-  // Add Back button as a section row
-  components.push({
-    type: 9,
-    id: 1000,
-    components: [
-      {
-        type: 10,
-        id: 1001,
-        content: "🔙 Return to Bubtopia"
+  // Add balance and back button
+  itemBlocks.push(
+    {
+      type: 10,
+      id: 999,
+      content: `**Your Balance:** <:bubux:1431898256840986654> ${userProfile.balance}`
+    },
+    {
+      type: 9,
+      id: 1000,
+      components: [{ type: 10, id: 1001, content: "🔙 Return to Bubtopia" }],
+      accessory: {
+        type: 2,
+        style: 4,
+        label: "Back",
+        custom_id: "ReturnToHub"
       }
-    ],
-    accessory: {
-      type: 2,
-      style: 4, // Danger / Secondary style
-      label: "Back",
-      custom_id: "ReturnToHub"
     }
-  });
+  );
 
-  // Container for shop message
   const container = [
     {
       type: 17,
-      accent_color: 0x3498db, // blue
+      accent_color: 0x3498db,
       components: [
         {
           type: 10,
@@ -87,67 +78,72 @@ export async function run({ interaction, hubMessage, userProfile }) {
         {
           type: 12,
           items: [
-            { media: { url: 'https://cdn.discordapp.com/attachments/354040284708864011/1433350344355610674/goodshop.png' } }
+            {
+              media: {
+                url: "https://cdn.discordapp.com/attachments/354040284708864011/1433350344355610674/goodshop.png"
+              }
+            }
           ]
         },
-        ...components
+        ...itemBlocks
       ]
     }
   ];
 
   // Send the shop
-  await interaction.reply({
+  const shopMessage = await interaction.reply({
     components: container,
-    flags: MessageFlags.IsComponentsV2
+    flags: MessageFlags.IsComponentsV2,
+    fetchReply: true
   });
 
-  // Collector for buttons
-  const collector = hubMessage.createMessageComponentCollector({ time: 300_000 });
+  const collector = shopMessage.createMessageComponentCollector({ time: 300_000 });
 
-  collector.on('collect', async i => {
-    if (i.user.id !== userProfile.userId) {
+  collector.on('collect', async (i) => {
+    if (i.user.id !== userProfile.userId)
       return i.reply({ content: "This isn't your shop!", ephemeral: true });
-    }
 
-    // Purchase Dig Upgrade
-    if (i.customId === "buy:Dig Upgrade") {
-      if (userProfile.balance < 75) {
-        return i.reply({ content: "Not enough Bubux!", ephemeral: true });
-      }
-      userProfile.balance -= 75;
-      userProfile.digBonus = (userProfile.digBonus || 0) + 1;
-      await userProfile.save();
+    const id = i.customId;
 
-      await i.reply({ content: "You purchased **Dig Upgrade**! +1 per dig press", ephemeral: true });
-    }
-
-    // Purchase other items
-    if (i.customId.startsWith("buy:") && i.customId !== "buy:Dig Upgrade") {
-      const itemName = i.customId.split(":")[1];
+    // Handle purchases
+    if (id.startsWith("buy:")) {
+      const itemName = id.split(":")[1];
       const item = items.find(it => it.name === itemName);
       if (!item) return i.reply({ content: "Item not found.", ephemeral: true });
-      if (userProfile.balance < item.price) return i.reply({ content: "Not enough Bubux!", ephemeral: true });
+      if (userProfile.balance < item.price)
+        return i.reply({ content: "Not enough Bubux!", ephemeral: true });
 
       userProfile.balance -= item.price;
-      await userProfile.save();
+      if (itemName === "Dig Upgrade")
+        userProfile.digBonus = (userProfile.digBonus || 0) + 1;
 
-      await i.reply({ content: `You purchased **${itemName}** for ${item.price} Bubux!`, ephemeral: true });
+      await userProfile.save();
+      await i.reply({ content: `✅ You purchased **${itemName}**!`, ephemeral: true });
     }
 
     // Back button
-    if (i.customId === "ReturnToHub") {
-      // Restore hub
-      await hubMessage.edit({
-        content: "Returning to Bubtopia...",
-        components: []
-      });
+    if (id === "ReturnToHub") {
       collector.stop();
+      await i.deferUpdate(); // <-- defer first to avoid InteractionAlreadyReplied
+      if (returnCallback) {
+        await returnCallback(userProfile, i);
+      } else {
+        // fallback
+        await i.followUp({ content: "⚠️ Could not return to Bubtopia (callback not provided).", ephemeral: true });
+      }
       return;
     }
 
-    // Update balance in shop
+    // Update balance text
     const balanceBlock = container[0].components.find(c => c.id === 999);
-    if (balanceBlock) balanceBlock.content = `Your balance: <:bubux:1431898256840986654> ${userProfile.balance}`;
-    await hubMessage.edit({ components: container });
+    if (balanceBlock)
+      balanceBlock.content = `**Your Balance:** <:bubux:1431898256840986654> ${userProfile.balance}`;
+
+    await shopMessage.edit({ components: container });
   });
+}
+
+// Run just calls openShop
+export async function run({ interaction, userProfile }) {
+  await openShop(interaction, userProfile);
 }
