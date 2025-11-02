@@ -45,7 +45,7 @@ function pickRandomElements(array, n) {
 
 // Generate a new adventure node
 async function generateNode(previousChoices, lastChoice, currentBalance) {
-  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 2); // 2–3 elements
+  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 1); // 1–2 elements
 
   let outcomePart = "";
   if (lastChoice) {
@@ -67,11 +67,10 @@ Now generate the next step:
 - 2-sentence narrative addressed to "you".
 - 3 creative action choices:
   * Each choice ≤ 4 words.
-  * Assign a gold outcome for each choice that makes sense with the story element it involves.
-  * Gold outcomes can be positive or negative.
+  * Assign a gold outcome for each choice (positive or negative).
   * Negative gold cannot exceed current balance.
-  * Positive gold can be up to 2 times the player's current balance.
-  * Ensure choices and their gold outcomes feel tied to the story element and chaotic whimsical tone.
+  * Positive gold can be up to 2x current balance.
+  * Assume each choice has a 50/50 chance of success or failure, and gold outcomes should make sense for both outcomes.
 Use previousChoices to continue the story: ${JSON.stringify(previousChoices)}
 
 Return strictly JSON in this format:
@@ -135,9 +134,9 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
 
   const buttons = nodeData.choices.map((choice, index) =>
     new ButtonBuilder()
-      .setCustomId(`choice_${index}_${choice.gold}`)
+      .setCustomId(`choice_${index}`)
       .setLabel(choice.text)
-      .setStyle(choice.gold >= 0 ? ButtonStyle.Success : ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Primary)
   );
 
   const row = new ActionRowBuilder().addComponents(buttons);
@@ -153,22 +152,28 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
       return i.reply({ content: "This isn't your adventure!", ephemeral: true });
     }
 
-    const [_, choiceIndexStr, goldStr] = i.customId.split("_");
+    const [_, choiceIndexStr] = i.customId.split("_");
     const choiceIndex = parseInt(choiceIndexStr, 10);
-    const delta = parseInt(goldStr, 10);
-
-    const actualDelta = Math.max(-userProfile.balance, delta);
-    userProfile.balance += actualDelta;
-    await userProfile.save();
 
     const chosenAction = nodeData.choices[choiceIndex];
-    previousChoices.push(chosenAction.text);
+
+    // 50/50 success/fail
+    const isSuccess = Math.random() < 0.5;
+
+    const delta = isSuccess
+      ? chosenAction.gold
+      : -Math.min(userProfile.balance, chosenAction.gold);
+
+    userProfile.balance += delta;
+    await userProfile.save();
+
+    previousChoices.push(`${chosenAction.text} (${isSuccess ? "Success" : "Fail"})`);
 
     await i.deferUpdate();
     sessionCache.delete(userProfile.userId);
 
-    // Render the next node including outcome of last choice
-    await renderNode(i, userProfile, previousChoices, chosenAction);
+    // Render next node including outcome
+    await renderNode(i, userProfile, previousChoices, { ...chosenAction, gold: delta });
   });
 
   collector.on("end", async () => {
