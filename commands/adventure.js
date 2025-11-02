@@ -1,103 +1,114 @@
 // adventure.js
-import OpenAI from "openai";
-import { EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } from "discord.js";
-import UserProfile from "../schemas/UserProfile.js";
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import UserProfile from '../schemas/UserProfile.js';
+import OpenAI from 'openai';
 
-export const data = {
-  name: "adventure",
-  description: "Start an interactive adventure"
-};
-
-// Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Generate a new adventure node
+// Generate a short fantasy prompt text based on previous choices
 async function generateNode(previousChoices) {
   const prompt = `
-You are a fantasy text adventure game master.
-Generate a short narrative prompt for a player.
-Do not include outcomes or results.
-Include 3 short descriptive action names for buttons that could affect gold balance.
-
-Return JSON like this:
-{
-  "prompt": "The narrative prompt text here",
-  "choices": ["choice1", "choice2", "choice3"]
-}
-
-Use previousChoices to influence context: ${JSON.stringify(previousChoices)}
+Generate a whimsical, short fantasy adventure scene for Discord.
+Previous player choices: ${previousChoices.join(', ') || 'none'}.
+Only return descriptive text, no options.
+Focus on rising action, climax, and falling action in the story arc.
+Keep it short, vivid, and fantastical.
 `;
-
   const response = await openai.chat.completions.create({
     model: "gpt-4",
-    messages: [
-      { role: "system", content: "You are a fantasy adventure game master." },
-      { role: "user", content: prompt }
-    ],
-    max_tokens: 400
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.8,
+    max_tokens: 200
   });
+  return response.choices[0].message.content.trim();
+}
 
+// Generate 3 button choices affecting balance
+async function generateChoices() {
+  return [
+    { label: "Brave Attack", value: Math.floor(Math.random() * 50) + 10 },
+    { label: "Cautious Move", value: Math.floor(Math.random() * 20) - 10 },
+    { label: "Magical Trick", value: Math.floor(Math.random() * 30) + 5 }
+  ];
+}
+
+async function renderNode(interaction, userProfile, previousChoices = []) {
   try {
-    return JSON.parse(response.choices[0].message.content);
+    // Defer if slash command
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
+
+    const promptText = await generateNode(previousChoices);
+    const choices = await generateChoices();
+
+    const embed = new EmbedBuilder()
+      .setTitle("Your Adventure")
+      .setDescription(promptText)
+      .setColor(0x1F8B4C);
+
+    const row = new ActionRowBuilder().addComponents(
+      choices.map(c =>
+        new ButtonBuilder()
+          .setCustomId(`choice_${c.label}_${c.value}`)
+          .setLabel(c.label)
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    const message = await interaction.editReply({ embeds: [embed], components: [row] });
+
+    const collector = message.createMessageComponentCollector({ time: 300_000 });
+
+    collector.on('collect', async i => {
+      if (!i.user || i.user.id !== interaction.user.id) {
+        return i.reply({ content: "This isn't your adventure!", ephemeral: true });
+      }
+
+      const [_, label, value] = i.customId.split('_');
+      const delta = parseInt(value);
+
+      userProfile.balance += delta;
+      await userProfile.save();
+
+      previousChoices.push(label);
+
+      // Render next node with the button interaction
+      await renderNode(i, userProfile, previousChoices);
+    });
+
+    collector.on('end', async () => {
+      const disabledRow = new ActionRowBuilder().addComponents(
+        row.components.map(c => c.setDisabled(true))
+      );
+      await interaction.editReply({ components: [disabledRow] }).catch(() => {});
+    });
+
   } catch (err) {
-    console.error("Failed to parse GPT response:", response.choices[0].message.content);
-    return { prompt: "An error occurred generating the adventure.", choices: ["Explore", "Rest", "Wait"] };
+    console.error("Error rendering node:", err);
+    if (!interaction.replied) {
+      await interaction.reply({ content: "An error occurred while generating the adventure.", ephemeral: true }).catch(() => {});
+    }
   }
 }
 
-// Render a node with buttons
-async function renderNode(interaction, userProfile, previousChoices = []) {
-  const nodeData = await generateNode(previousChoices);
+// Slash command export for djs-commander
+export const data = new SlashCommandBuilder()
+  .setName('adventure')
+  .setDescription('Start a whimsical fantasy adventure!');
 
-  const embed = new EmbedBuilder()
-    .setTitle("Your Adventure")
-    .setDescription(nodeData.prompt)
-    .setColor(0x1abc9c);
+export async function run(interaction) {
+  if (!interaction.user || !interaction.user.id) {
+    return interaction.reply({ content: "Error: cannot identify user.", ephemeral: true });
+  }
 
-  const buttons = nodeData.choices.map((choice, index) => {
-    const delta = Math.floor(Math.random() * 50) - 25; // Random gold change
-    return new ButtonBuilder()
-      .setCustomId(`choice_${index}_${delta}`)
-      .setLabel(choice)
-      .setStyle(delta >= 0 ? ButtonStyle.Success : ButtonStyle.Danger);
-  });
-
-  const row = new ActionRowBuilder().addComponents(buttons);
-
-  const message = interaction.deferred || interaction.replied
-    ? await interaction.followUp({ embeds: [embed], components: [row], fetchReply: true })
-    : await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
-
-  const collector = message.createMessageComponentCollector({ time: 300_000 });
-
-  collector.on("collect", async i => {
-    if (i.user.id !== userProfile.userId) {
-      return i.reply({ content: "This isn't your adventure!", ephemeral: true });
-    }
-
-    const parts = i.customId.split("_");
-    const delta = parseInt(parts[2], 10);
-    userProfile.balance += delta;
+  let userProfile = await UserProfile.findOne({ userId: interaction.user.id });
+  if (!userProfile) {
+    userProfile = new UserProfile({ userId: interaction.user.id, balance: 100 });
     await userProfile.save();
+  }
 
-    await i.update({ content: `You chose: ${nodeData.choices[parseInt(parts[1])]}.\nGold change: ${delta}. Current balance: ${userProfile.balance}`, embeds: [], components: [] });
-
-    previousChoices.push(nodeData.choices[parseInt(parts[1])]);
-    await renderNode(i, userProfile, previousChoices);
-  });
-
-  collector.on("end", async () => {
-    if (!message.deleted) await message.edit({ components: [] });
-  });
-}
-
-export async function run({ interaction }) {
-  const userId = interaction.user.id;
-  let userProfile = await UserProfile.findOne({ userId });
-  if (!userProfile) userProfile = new UserProfile({ userId, balance: 100 });
-
-  if (!interaction.deferred) await interaction.deferReply();
-  await renderNode(interaction, userProfile, []);
+  await renderNode(interaction, userProfile);
 }
