@@ -12,11 +12,41 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+// Optional story elements to sprinkle into adventures
+const storyElements = [
+  "Andie Haslam",
+  "Carrie Haslam",
+  "Joe Biden",
+  "Shell Silverstein",
+  "Dr. Suess",
+  "Coach Quesenberry",
+  "Brady Haslam",
+  "Ethan Thomas Douglas",
+  "Matthew Nightblood",
+  "Pepperoni Tony",
+  "Big Pat",
+  "Pat Fusty",
+  "Lego figurines",
+  "Austin, The Toe Tickler",
+  "Big Austin",
+  "Paul",
+  "Gamer's Paradise",
+  "Dealmaster Dougie's Bargain Barn"
+];
+
 // In-memory session cache
 const sessionCache = new Map();
 
+// Utility to pick n random elements from an array
+function pickRandomElements(array, n) {
+  const shuffled = array.sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, n);
+}
+
 // Generate a new adventure node
 async function generateNode(previousChoices, lastChoice, currentBalance) {
+  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 2); // 2–3 elements
+
   let outcomePart = "";
   if (lastChoice) {
     outcomePart = `
@@ -25,26 +55,28 @@ Use "you" perspective.
 Keep it short, chaotic, fantastical, and simple.
 Write exactly 2 sentences:
 1. How your previous choice affected your gold (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
-2. Progress the story in a short, chaotic, simple, fantastical way. Don't asking the player anything. Do not tell the player the gold outcomes of their future choices. Use very minimal words.
+2. Progress the story in a short, chaotic, simple, fantastical way. Do not ask the player anything.
 `;
   }
 
   const prompt = `
 You are a chaotic whimsical fantasy adventure game master.
 ${outcomePart}
+Optional story elements you can sprinkle into the narrative (use any or none): ${randomElements.join(", ")}
 Now generate the next step:
 - 2-sentence narrative addressed to "you".
 - 3 creative action choices:
   * Each choice ≤ 4 words.
-  * Gold outcomes can be any integer, positive or negative.
+  * Assign a gold outcome for each choice that makes sense with the story element it involves.
+  * Gold outcomes can be positive or negative.
   * Negative gold cannot exceed current balance.
   * Positive gold can be up to 2 times the player's current balance.
-  * Gold outcomes should fit the story context and be chaotic.
+  * Ensure choices and their gold outcomes feel tied to the story element and chaotic whimsical tone.
 Use previousChoices to continue the story: ${JSON.stringify(previousChoices)}
 
 Return strictly JSON in this format:
 {
-  "prompt": "Three short chaotic whimsical sentences describing the story and next actions",
+  "prompt": "Two short chaotic whimsical sentences describing the story and next actions",
   "choices": [
     { "text": "Choice 1", "gold": 0 },
     { "text": "Choice 2", "gold": 0 },
@@ -60,7 +92,7 @@ Return strictly JSON in this format:
         { role: "system", content: "You are a chaotic whimsical fantasy adventure game master." },
         { role: "user", content: prompt }
       ],
-      max_tokens: 250,
+      max_tokens: 350,
       temperature: 0.85
     });
 
@@ -76,7 +108,7 @@ Return strictly JSON in this format:
   } catch (err) {
     console.error("Failed to parse GPT response:", err);
     return {
-      prompt: "You stumble into a spinning rainbow. Three paths spin before you.",
+      prompt: "You tumble into a whirling rainbow. Three paths spin chaotically before you.",
       choices: [
         { text: "Jump Forward", gold: Math.min(10, currentBalance) },
         { text: "Duck Quickly", gold: 0 },
