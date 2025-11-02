@@ -86,8 +86,11 @@ async function renderNode(interaction, userProfile, previousChoices = []) {
     await userProfile.save();
 
     previousChoices.push(nodeData.choices[parseInt(parts[1])]);
-    await i.update({ embeds: [], components: [] });
 
+    // Acknowledge button press without sending empty message
+    await i.deferUpdate();
+
+    // Render next node
     await renderNode(i, userProfile, previousChoices);
   });
 
