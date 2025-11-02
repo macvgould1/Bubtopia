@@ -19,7 +19,7 @@ const storyElements = [
   "Joe Biden",
   "Shell Silverstein",
   "Dr. Suess",
-  "Coach Quesenberry",
+  "Coach Quessenberry",
   "Brady Haslam",
   "Ethan Thomas Douglas",
   "Matthew Nightblood",
@@ -61,7 +61,49 @@ const storyElements = [
   "Barry Dillon",
   "Bob Dylan",
   "Naked Grandma",
-  "Steve Harvey"
+  "Steve Harvey",
+  "Qiqiao",
+"Xijiang",
+"Hongcun",
+"Chengkan",
+"Shaxi",
+"Nanxi",
+"Ping’an",
+"Longji",
+"Duoyishu",
+"Liugong",
+"Xijiang Qianhu Miao",
+"Zhouzhuang",
+"Wuyuan Likeng",
+"Langde Miao",
+"Bamei",
+"Jingzhu",
+"Huangling",
+"Gaotian",
+"Jingshan",
+"Tangmo",
+"Yantou",
+"Zhaoxing Dong",
+"Jiangwan",
+"Pingtan",
+"Hemu",
+"Yubeng",
+"Shuhe",
+"Taxia",
+"Yunhe",
+"Xiahe",
+"Shitang",
+"Xijiang Miao",
+"Dazhai",
+"Lijiashan",
+"Yijiang",
+"Tengtou",
+"Luoxi",
+"Shiqiao",
+"Shitangwan",
+"Dongyang",
+"Wengding",
+"Neo-Detroit"
 ];
 
 // In-memory session cache
@@ -75,7 +117,7 @@ function pickRandomElements(array, n) {
 
 // Generate a new adventure node
 async function generateNode(previousChoices, lastChoice, currentBalance) {
-  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 1); // 1–2 elements
+  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 1); // always 1-2 elements
 
   let outcomePart = "";
   if (lastChoice) {
@@ -85,14 +127,14 @@ Use "you" perspective.
 Keep it short, chaotic, fantastical, and simple.
 Write exactly 2 sentences:
 1. How your previous choice affected your gold (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
-2. Progress the story in a short, chaotic, simple, fantastical way. Do not ask the player anything.
+2. Progress the story in a short, chaotic, simple, fantastical way using at least one of the proper nouns. Do not ask the player anything.
 `;
   }
 
   const prompt = `
 You are a chaotic whimsical fantasy adventure game master.
 ${outcomePart}
-Optional story elements you can sprinkle into the narrative (use any or none): ${randomElements.join(", ")}
+Mandatory: include 1–2 proper nouns from this list in your story: ${randomElements.join(", ")}
 Now generate the next step:
 - 2-sentence narrative addressed to "you".
 - 3 creative action choices:
@@ -137,7 +179,7 @@ Return strictly JSON in this format:
   } catch (err) {
     console.error("Failed to parse GPT response:", err);
     return {
-      prompt: "You tumble into a whirling rainbow. Three paths spin chaotically before you.",
+      prompt: "You tumble into a whirling rainbow. Three paths spin chaotically before you, with Marge Simpson giggling nearby.",
       choices: [
         { text: "Jump Forward", gold: Math.min(10, currentBalance) },
         { text: "Duck Quickly", gold: 0 },
