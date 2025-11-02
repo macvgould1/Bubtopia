@@ -5,38 +5,13 @@ import UserProfile from "../schemas/UserProfile.js";
 
 export const data = {
   name: "adventure",
-  description: "Start a chaotic whimsical fantasy adventure"
+  description: "Start a fantasy adventure"
 };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Optional story elements to sprinkle into adventures
 const storyElements = [
-  "Andie Haslam",
-  "Carrie Haslam",
-  "Joe Biden",
-  "Shell Silverstein",
-  "Dr. Suess",
-  "Coach Quessenberry",
-  "Brady Haslam",
-  "Ethan Thomas Douglas",
-  "Matthew Nightblood",
-  "Pepperoni Tony's Italian Pizzeria",
-  "Big Pat",
-  "Pat Fusty",
-  "Lego figurines",
-  "Matthew De'redita",
-  "Big Austin",
-  "Paul",
-  "Gamer's Paradise",
-  "A short dark figure holding a microphone and wearing a blue bandana",
-  "Bub's left toe",
-  "a small child",
-  "Obyn Greenfoot",
-  "Merle Ambrose",
-  "Bill Cosby",
   "The Mayor of Flavor Town",
   "Oprah Winfrey",
   "Macaulay Vincent Alan Gould",
@@ -63,91 +38,99 @@ const storyElements = [
   "Naked Grandma",
   "Steve Harvey",
   "Qiqiao",
-"Xijiang",
-"Hongcun",
-"Chengkan",
-"Shaxi",
-"Nanxi",
-"Ping’an",
-"Longji",
-"Duoyishu",
-"Liugong",
-"Xijiang Qianhu Miao",
-"Zhouzhuang",
-"Wuyuan Likeng",
-"Langde Miao",
-"Bamei",
-"Jingzhu",
-"Huangling",
-"Gaotian",
-"Jingshan",
-"Tangmo",
-"Yantou",
-"Zhaoxing Dong",
-"Jiangwan",
-"Pingtan",
-"Hemu",
-"Yubeng",
-"Shuhe",
-"Taxia",
-"Yunhe",
-"Xiahe",
-"Shitang",
-"Xijiang Miao",
-"Dazhai",
-"Lijiashan",
-"Yijiang",
-"Tengtou",
-"Luoxi",
-"Shiqiao",
-"Shitangwan",
-"Dongyang",
-"Wengding",
-"Neo-Detroit"
+  "Xijiang",
+  "Hongcun",
+  "Chengkan",
+  "Shaxi",
+  "Nanxi",
+  "Ping’an",
+  "Longji",
+  "Duoyishu",
+  "Liugong",
+  "Xijiang Qianhu Miao",
+  "Zhouzhuang",
+  "Wuyuan Likeng",
+  "Langde Miao",
+  "Bamei",
+  "Jingzhu",
+  "Huangling",
+  "Gaotian",
+  "Jingshan",
+  "Tangmo",
+  "Yantou",
+  "Zhaoxing Dong",
+  "Jiangwan",
+  "Pingtan",
+  "Hemu",
+  "Yubeng",
+  "Shuhe",
+  "Taxia",
+  "Yunhe",
+  "Xiahe",
+  "Shitang",
+  "Xijiang Miao",
+  "Dazhai",
+  "Lijiashan",
+  "Yijiang",
+  "Tengtou",
+  "Luoxi",
+  "Shiqiao",
+  "Shitangwan",
+  "Dongyang",
+  "Wengding",
+  "Neo-Detroit"
 ];
 
-// In-memory session cache
+// In-memory session cache and story log
 const sessionCache = new Map();
+const storyLog = new Map();
 
 // Utility to pick n random elements from an array
 function pickRandomElements(array, n) {
-  const shuffled = array.sort(() => 0.5 - Math.random());
+  const shuffled = [...array].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, n);
 }
 
 // Generate a new adventure node
-async function generateNode(previousChoices, lastChoice, currentBalance) {
-  const randomElements = pickRandomElements(storyElements, Math.floor(Math.random() * 2) + 1); // always 1-2 elements
+async function generateNode(previousChoices, lastChoice, currentBalance, userId) {
+  const randomElements = pickRandomElements(storyElements, 2); // Always pick 2 elements
+
+  // Include the story so far
+  const previousStory = storyLog.get(userId) || "";
 
   let outcomePart = "";
   if (lastChoice) {
     outcomePart = `
 Describe the outcome of your last choice: "${lastChoice.text}".
 Use "you" perspective.
-Keep it short, chaotic, fantastical, and simple.
+Keep it short, and simple.
 Write exactly 2 sentences:
 1. How your previous choice affected your gold (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
-2. Progress the story in a short, chaotic, simple, fantastical way using at least one of the proper nouns. Do not ask the player anything.
+2. Progress the story in a short way. Do not ask the player anything.
 `;
   }
 
   const prompt = `
-You are a chaotic whimsical fantasy adventure game master.
+You are a fantasy adventure game master.
 ${outcomePart}
-Mandatory: include 1–2 proper nouns from this list in your story: ${randomElements.join(", ")}
-Now generate the next step:
-- 2-sentence narrative addressed to "you".
-- 3 creative action choices:
-  * Each choice ≤ 4 words.
-  * Assign a gold outcome for each choice (positive or negative).
-  * Negative gold cannot exceed current balance.
-  * Positive gold can be up to 2x current balance.
-  * Ensure choices and their gold outcomes fit the chaotic whimsical tone.
-Use previousChoices to continue the story: ${JSON.stringify(previousChoices)}
+Story so far:
+${previousStory}
 
-Return strictly JSON in this format:
+Always include at least 2 of these story elements: ${randomElements.join(", ")}
+
+Generate the next step following a **narrative arc**:
+- Rising action → Climax → Falling action → Resolution
+- 2 short  sentences describing what happens next
+- 3 creative action choices:
+  * Each choice ≤ 4 words
+  * Assign a gold outcome for each choice (positive or negative)
+  * Negative gold cannot exceed current balance
+  * Positive gold can be up to 2x current balance
+  * Choices and gold outcomes should match story and whimsical tone
+- Never ask the player what they choose
+Return strictly JSON:
 {
-  "prompt": "Two short chaotic whimsical sentences describing the story and next actions",
+  "prompt": "Two short sentences describing the story and next actions",
   "choices": [
     { "text": "Choice 1", "gold": 0 },
     { "text": "Choice 2", "gold": 0 },
@@ -160,11 +143,11 @@ Return strictly JSON in this format:
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a chaotic whimsical fantasy adventure game master." },
+        { role: "system", content: "You are a fantasy adventure game master." },
         { role: "user", content: prompt }
       ],
       max_tokens: 350,
-      temperature: 0.85
+      temperature: 0.2
     });
 
     const parsed = JSON.parse(response.choices[0].message.content);
@@ -179,7 +162,7 @@ Return strictly JSON in this format:
   } catch (err) {
     console.error("Failed to parse GPT response:", err);
     return {
-      prompt: "You tumble into a whirling rainbow. Three paths spin chaotically before you, with Marge Simpson giggling nearby.",
+      prompt: "You tumble into a whirling rainbow. Three paths spin chaotically before you.",
       choices: [
         { text: "Jump Forward", gold: Math.min(10, currentBalance) },
         { text: "Duck Quickly", gold: 0 },
@@ -195,7 +178,7 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
   if (sessionCache.has(userProfile.userId)) {
     nodeData = sessionCache.get(userProfile.userId);
   } else {
-    nodeData = await generateNode(previousChoices, lastChoice, userProfile.balance);
+    nodeData = await generateNode(previousChoices, lastChoice, userProfile.balance, userProfile.userId);
     sessionCache.set(userProfile.userId, nodeData);
   }
 
@@ -205,11 +188,10 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
     .setColor(0x1abc9c);
 
   const buttons = nodeData.choices.map((choice, index) => {
-    // Determine style based on potential gold change
     let style;
-    if (choice.gold > 0) style = ButtonStyle.Success; // green
-    else if (choice.gold < 0) style = ButtonStyle.Danger; // red
-    else style = ButtonStyle.Primary; // neutral blue
+    if (choice.gold > 0) style = ButtonStyle.Success;
+    else if (choice.gold < 0) style = ButtonStyle.Danger;
+    else style = ButtonStyle.Primary;
 
     return new ButtonBuilder()
       .setCustomId(`choice_${index}`)
@@ -232,25 +214,27 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
 
     const [_, choiceIndexStr] = i.customId.split("_");
     const choiceIndex = parseInt(choiceIndexStr, 10);
-
     const chosenAction = nodeData.choices[choiceIndex];
 
     // 50/50 success/fail
     const isSuccess = Math.random() < 0.5;
-
-    const delta = isSuccess
-      ? chosenAction.gold
-      : -Math.min(userProfile.balance, chosenAction.gold);
+    const delta = isSuccess ? chosenAction.gold : -Math.min(userProfile.balance, Math.abs(chosenAction.gold));
 
     userProfile.balance += delta;
     await userProfile.save();
+
+    // Update story log with full narrative including choice outcome
+    const previousLog = storyLog.get(userProfile.userId) || "";
+    storyLog.set(
+      userProfile.userId,
+      `${previousLog}\nYou chose: "${chosenAction.text}" (${isSuccess ? "Success" : "Fail"}). ${nodeData.prompt}`
+    );
 
     previousChoices.push(`${chosenAction.text} (${isSuccess ? "Success" : "Fail"})`);
 
     await i.deferUpdate();
     sessionCache.delete(userProfile.userId);
 
-    // Render next node including outcome
     await renderNode(i, userProfile, previousChoices, { ...chosenAction, gold: delta });
   });
 
