@@ -12,45 +12,71 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Generate a new adventure node with AI-provided gold values
-async function generateNode(previousChoices, currentBalance) {
-  const prompt = `
-You are a fantasy text adventure game master.
-Generate a short whimsical narrative prompt for a player (2 sentences).
-Do not include outcomes or results.
-Provide 3 short descriptive action names for buttons.
-For each choice, provide a gold change that makes sense according to the choice:
-- The gold loss cannot be more than the player's current balance (negative values between -${currentBalance} and 0)
-- Positive rewards should be reasonable, up to +25
+// In-memory session cache
+const sessionCache = new Map();
 
-Return JSON like this:
-{
-  "prompt": "The narrative prompt text here",
-  "choices": [
-    { "text": "Choice 1 text", "gold": 10 },
-    { "text": "Choice 2 text", "gold": -5 },
-    { "text": "Choice 3 text", "gold": 20 }
-  ]
+// Helper: ensure max 4 words per label without truncating mid-word
+function enforceMaxFourWords(str) {
+  const words = str.split(/\s+/);
+  return words.slice(0, 4).join(" ");
 }
 
-Use previousChoices to influence context: ${JSON.stringify(previousChoices)}
+// Generate a new adventure node
+async function generateNode(previousChoices, lastChoice, currentBalance) {
+  let outcomePart = "";
+  if (lastChoice) {
+    outcomePart = `
+Describe the consequence and outcome of this player's last choice: "${lastChoice.text}".
+Include a short whimsical/fantastical narrative describing how this choice affected the player and their gold balance (${lastChoice.gold}).
+`;
+  }
+
+  const prompt = `
+You are a whimsical fantasy adventure game master.
+${outcomePart}
+Now generate the next adventure step:
+- 2-sentence narrative prompt
+- 3 creative action choices for the player, each with a gold change:
+  * Negative gold cannot exceed the player's current balance.
+  * Positive gold should be reasonable, up to +25.
+  * Each action should be a natural short phrase ≤ 4 words.
+
+Use previousChoices for story continuity: ${JSON.stringify(previousChoices)}
+
+Return JSON strictly like this:
+{
+  "prompt": "Narrative text",
+  "choices": [
+    { "text": "Choice 1", "gold": 10 },
+    { "text": "Choice 2", "gold": -5 },
+    { "text": "Choice 3", "gold": 20 }
+  ]
+}
 `;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      { role: "system", content: "You are a fantasy adventure game master." },
-      { role: "user", content: prompt }
-    ],
-    max_tokens: 400
-  });
-
   try {
-    // Remove plus signs to make valid JSON
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "You are a fantasy adventure game master." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 300,
+      temperature: 0.8
+    });
+
     const content = response.choices[0].message.content.replace(/\+(\d+)/g, '$1');
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+
+    // Ensure all choices are ≤ 4 words
+    parsed.choices = parsed.choices.map(c => ({
+      text: enforceMaxFourWords(c.text),
+      gold: c.gold
+    }));
+
+    return parsed;
   } catch (err) {
-    console.error("Failed to parse GPT response:", response.choices[0].message.content);
+    console.error("Failed to parse GPT response:", response.choices[0]?.message?.content || err);
     return {
       prompt: "An error occurred generating the adventure.",
       choices: [
@@ -62,9 +88,15 @@ Use previousChoices to influence context: ${JSON.stringify(previousChoices)}
   }
 }
 
-// Render a node with buttons and show updated balance
-async function renderNode(interaction, userProfile, previousChoices = []) {
-  const nodeData = await generateNode(previousChoices, userProfile.balance);
+// Render node and handle buttons
+async function renderNode(interaction, userProfile, previousChoices = [], lastChoice = null) {
+  let nodeData;
+  if (sessionCache.has(userProfile.userId)) {
+    nodeData = sessionCache.get(userProfile.userId);
+  } else {
+    nodeData = await generateNode(previousChoices, lastChoice, userProfile.balance);
+    sessionCache.set(userProfile.userId, nodeData);
+  }
 
   const embed = new EmbedBuilder()
     .setTitle("Your Adventure")
@@ -95,18 +127,18 @@ async function renderNode(interaction, userProfile, previousChoices = []) {
     const choiceIndex = parseInt(choiceIndexStr, 10);
     const delta = parseInt(goldStr, 10);
 
-    // Ensure gold cannot go below 0
     const actualDelta = Math.max(-userProfile.balance, delta);
-
     userProfile.balance += actualDelta;
     await userProfile.save();
 
-    previousChoices.push(nodeData.choices[choiceIndex].text);
+    const chosenAction = nodeData.choices[choiceIndex];
+    previousChoices.push(chosenAction.text);
 
     await i.deferUpdate();
+    sessionCache.delete(userProfile.userId);
 
-    // Render next node with updated balance
-    await renderNode(i, userProfile, previousChoices);
+    // Render the next node including outcome of last choice
+    await renderNode(i, userProfile, previousChoices, chosenAction);
   });
 
   collector.on("end", async () => {
@@ -114,6 +146,7 @@ async function renderNode(interaction, userProfile, previousChoices = []) {
   });
 }
 
+// Command entry
 export async function run({ interaction }) {
   const userId = interaction.user.id;
   let userProfile = await UserProfile.findOne({ userId });
