@@ -25,8 +25,8 @@ Use second-person perspective ("you") and never reference "the player".
 Keep it short, whimsical, chaotic, fantastical, and simple.
 Write exactly three sentences:
 1. Describe how the previous choice affected your gold balance (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
-2. Progress the story in whimsical, brief, fantastical way.
-3. Introduce the next three choices in context, weaving them naturally into the story. Do not tell the player how their choice will affect their balance or outcome. Never ask the player what choice they would like directly.
+2. Progress the story in whimsical, brief, fantastical way that describes three unique actions for the player in the story context in 2 sentences.
+3. Do not tell the player how their choice will affect their balance or outcome. Never ask the player a question.
 `;
   }
 
