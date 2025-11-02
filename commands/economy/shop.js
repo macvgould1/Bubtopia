@@ -1,149 +1,90 @@
-import UserProfile from '../../schemas/UserProfile.js';
-import { MessageFlags } from 'discord.js';
+const {
+  EmbedBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle
+} = require('discord.js');
+const UserProfile = require('../../schemas/UserProfile');
 
-export const data = {
-  name: 'shop',
-  description: 'Open the shop'
-};
+module.exports = {
+  data: {
+    name: 'shop',
+    description: 'Open the shop',
+  },
 
-// Exported function so Bubtopia can call it
-export async function openShop(interaction, userProfile, returnCallback) {
-  if (!interaction.inGuild()) {
-    return interaction.reply({
-      content: "You can only run this command in a server.",
-      ephemeral: true
-    });
-  }
-
-  // Shop inventory
-  const items = [
-    { name: "Dig Upgrade", desc: "+1 per dig press", price: 75 },
-    { name: "Super Shovel", desc: "Dig faster than ever!", price: 150 },
-    { name: "Mega Pickaxe", desc: "Boost your mining power!", price: 300 }
-  ];
-
-  // Build item components
-  const itemBlocks = items.flatMap((item, index) => [
-    {
-      type: 9,
-      id: index + 1,
-      components: [
-        {
-          type: 10,
-          id: index + 100,
-          content: `**${item.name}**\n${item.desc}`,
-        },
-      ],
-      accessory: {
-        type: 2,
-        id: index + 200,
-        style: 1,
-        label: `${item.price}`,
-        custom_id: `buy:${item.name}`,
-        emoji: { name: "bubux", id: "1431898256840986654" }
-      },
-    },
-    { type: 14, id: index + 300 }
-  ]);
-
-  // Add balance and back button
-  itemBlocks.push(
-    {
-      type: 10,
-      id: 999,
-      content: `**Your Balance:** <:bubux:1431898256840986654> ${userProfile.balance}`
-    },
-    {
-      type: 9,
-      id: 1000,
-      components: [{ type: 10, id: 1001, content: "🔙 Return to Bubtopia" }],
-      accessory: {
-        type: 2,
-        style: 4,
-        label: "Back",
-        custom_id: "ReturnToHub"
-      }
+  run: async ({ interaction, hubMessage, buildHubEmbed, buildHubButtons, userProfile }) => {
+    if (!interaction.inGuild()) {
+      return interaction.reply({ content: "You can only run this command in a server.", ephemeral: true });
     }
-  );
 
-  const container = [
-    {
-      type: 17,
-      accent_color: 0x3498db,
-      components: [
-        {
-          type: 10,
-          content: "**🎪 Dealmaster Dougie's Bargain Barn!**\nClick a button to purchase an item."
-        },
-        {
-          type: 12,
-          items: [
-            {
-              media: {
-                url: "https://cdn.discordapp.com/attachments/354040284708864011/1433350344355610674/goodshop.png"
-              }
-            }
-          ]
-        },
-        ...itemBlocks
-      ]
-    }
-  ];
+    // Build shop embed
+    const shopEmbed = new EmbedBuilder()
+      .setTitle('Dealmaster Dougie\'s Bargain Barn')
+      .setDescription(
+        `Welcome to the shop! You have <:bubux:1431898256840986654> ${userProfile.balance}.\n\n` +
+        `Upgrade available:\n- Dig Upgrade: +1 per dig press (Cost: 75 bubux)\n` +
+        `Current dig bonus: +${userProfile.digBonus || 0}`
+      )
+      .setColor('Blue')
+      .setImage('https://cdn.discordapp.com/attachments/354040284708864011/1433350344355610674/goodshop.png?ex=69045f08&is=69030d88&hm=e6575099d63c33423e196bd7c60223238ea0f64447808f7e16dd17806409c0e0&')
+      .setTimestamp();
 
-  // Send the shop
-  const shopMessage = await interaction.reply({
-    components: container,
-    flags: MessageFlags.IsComponentsV2,
-    fetchReply: true
-  });
+    // Buttons: purchase dig upgrade + return to hub
+    const purchaseUpgradeBtn = new ButtonBuilder()
+      .setCustomId('PurchaseDigUpgrade')
+      .setLabel('Purchase Dig Upgrade (+1 per dig)')
+      .setStyle(ButtonStyle.Primary);
 
-  const collector = shopMessage.createMessageComponentCollector({ time: 300_000 });
+    const returnHubBtn = new ButtonBuilder()
+      .setCustomId('ReturnToHub')
+      .setLabel('Return to Bubtopia')
+      .setStyle(ButtonStyle.Secondary);
 
-  collector.on('collect', async (i) => {
-    if (i.user.id !== userProfile.userId)
-      return i.reply({ content: "This isn't your shop!", ephemeral: true });
+    const row = new ActionRowBuilder().addComponents(purchaseUpgradeBtn, returnHubBtn);
 
-    const id = i.customId;
+    // Edit the original hub message with the shop embed
+    await hubMessage.edit({ embeds: [shopEmbed], components: [row] });
+    await interaction.deferUpdate(); // acknowledge button press silently
 
-    // Handle purchases
-    if (id.startsWith("buy:")) {
-      const itemName = id.split(":")[1];
-      const item = items.find(it => it.name === itemName);
-      if (!item) return i.reply({ content: "Item not found.", ephemeral: true });
-      if (userProfile.balance < item.price)
-        return i.reply({ content: "Not enough Bubux!", ephemeral: true });
+    // Collector for shop buttons
+    const collector = hubMessage.createMessageComponentCollector({ time: 300_000 });
 
-      userProfile.balance -= item.price;
-      if (itemName === "Dig Upgrade")
+    collector.on('collect', async (i) => {
+      if (i.user.id !== userProfile.userId) return i.reply({ content: "This isn't your shop!", ephemeral: true });
+
+      // PURCHASE DIG UPGRADE
+      if (i.customId === 'PurchaseDigUpgrade') {
+        if (userProfile.balance < 75) {
+          await i.reply({ content: 'Not enough bubux!', ephemeral: true });
+          return;
+        }
+
+        userProfile.balance -= 75;
         userProfile.digBonus = (userProfile.digBonus || 0) + 1;
+        await userProfile.save();
 
-      await userProfile.save();
-      await i.reply({ content: `✅ You purchased **${itemName}**!`, ephemeral: true });
-    }
+        // Update shop embed with new balance and dig bonus
+        const updatedEmbed = EmbedBuilder.from(shopEmbed)
+          .setDescription(
+            `Welcome to the shop! You have <:bubux:1431898256840986654> ${userProfile.balance}.\n\n` +
+            `Upgrade available:\n- Dig Upgrade: +1 per dig press (Cost: 75 bubux)\n` +
+            `Current dig bonus: +${userProfile.digBonus}`
+          );
 
-    // Back button
-    if (id === "ReturnToHub") {
-      collector.stop();
-      await i.deferUpdate(); // <-- defer first to avoid InteractionAlreadyReplied
-      if (returnCallback) {
-        await returnCallback(userProfile, i);
-      } else {
-        // fallback
-        await i.followUp({ content: "⚠️ Could not return to Bubtopia (callback not provided).", ephemeral: true });
+        await i.update({ embeds: [updatedEmbed], components: [row] });
+        return;
       }
-      return;
-    }
 
-    // Update balance text
-    const balanceBlock = container[0].components.find(c => c.id === 999);
-    if (balanceBlock)
-      balanceBlock.content = `**Your Balance:** <:bubux:1431898256840986654> ${userProfile.balance}`;
-
-    await shopMessage.edit({ components: container });
-  });
-}
-
-// Run just calls openShop
-export async function run({ interaction, userProfile }) {
-  await openShop(interaction, userProfile);
-}
+      // RETURN TO HUB
+      if (i.customId === 'ReturnToHub') {
+        // Restore original hub embed and buttons
+        await hubMessage.edit({
+          embeds: [buildHubEmbed()],
+          components: [buildHubButtons()]
+        });
+        await i.deferUpdate(); // prevent "interaction already acknowledged" error
+        collector.stop(); // stop the shop collector
+      }
+    });
+  },
+};
