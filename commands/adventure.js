@@ -15,19 +15,17 @@ const openai = new OpenAI({
 // In-memory session cache
 const sessionCache = new Map();
 
-// Helper: ensure max 4 words per label without truncating mid-word
-function enforceMaxFourWords(str) {
-  const words = str.split(/\s+/);
-  return words.slice(0, 4).join(" ");
-}
-
 // Generate a new adventure node
 async function generateNode(previousChoices, lastChoice, currentBalance) {
   let outcomePart = "";
   if (lastChoice) {
     outcomePart = `
-Describe the consequence and outcome of this player's last choice: "${lastChoice.text}".
-Include a short whimsical/fantastical narrative describing how this choice affected the player and their gold balance (${lastChoice.gold}).
+Describe the consequence of your last choice: "${lastChoice.text}".
+Use second-person perspective ("you") and never reference "the player".
+Mention explicitly how the choice affected your gold balance (${lastChoice.gold > 0 ? '+' : ''}${lastChoice.gold} gold).
+Write exactly three sentences:
+1. Consequence of the last choice and gold change.
+2-3. Progress the story naturally and introduce context for the next set of choices.
 `;
   }
 
@@ -35,17 +33,17 @@ Include a short whimsical/fantastical narrative describing how this choice affec
 You are a whimsical fantasy adventure game master.
 ${outcomePart}
 Now generate the next adventure step:
-- 2-sentence narrative prompt
-- 3 creative action choices for the player, each with a gold change:
-  * Negative gold cannot exceed the player's current balance.
-  * Positive gold should be reasonable, up to +25.
-  * Each action should be a natural short phrase ≤ 4 words.
+- 3-sentence narrative prompt addressed to "you" (second-person)
+- 3 creative action choices:
+    * Each choice must naturally be 4 words or fewer.
+    * Negative gold cannot exceed your current balance.
+    * Positive gold should be reasonable, up to +25.
 
 Use previousChoices for story continuity: ${JSON.stringify(previousChoices)}
 
 Return JSON strictly like this:
 {
-  "prompt": "Narrative text",
+  "prompt": "3-sentence narrative text addressed to 'you', first sentence consequence, next two sentences progress story",
   "choices": [
     { "text": "Choice 1", "gold": 10 },
     { "text": "Choice 2", "gold": -5 },
@@ -61,22 +59,21 @@ Return JSON strictly like this:
         { role: "system", content: "You are a fantasy adventure game master." },
         { role: "user", content: prompt }
       ],
-      max_tokens: 300,
+      max_tokens: 350,
       temperature: 0.8
     });
 
-    const content = response.choices[0].message.content.replace(/\+(\d+)/g, '$1');
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(response.choices[0].message.content);
 
-    // Ensure all choices are ≤ 4 words
+    // Ensure the AI choices are fully readable and ≤ 4 words
     parsed.choices = parsed.choices.map(c => ({
-      text: enforceMaxFourWords(c.text),
+      text: c.text.trim(),
       gold: c.gold
     }));
 
     return parsed;
   } catch (err) {
-    console.error("Failed to parse GPT response:", response.choices[0]?.message?.content || err);
+    console.error("Failed to parse GPT response:", err);
     return {
       prompt: "An error occurred generating the adventure.",
       choices: [
