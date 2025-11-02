@@ -5,29 +5,35 @@ import UserProfile from "../schemas/UserProfile.js";
 
 export const data = {
   name: "adventure",
-  description: "Start an interactive fantasy adventure"
+  description: "Start an interactive adventure"
 };
 
-// Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Generate a new adventure node with story arc consideration
-async function generateNode(previousChoices) {
+// Generate a new adventure node with AI-provided gold values
+async function generateNode(previousChoices, currentBalance) {
   const prompt = `
-You are a master of whimsical fantasy adventures.
-Generate a short narrative prompt for the player (2-4 sentences) that is descriptive, magical, and fantastical.
-Do not include outcomes. Only generate the scene text.
-Include 3 short action names (5 words max) for buttons that the player could choose.
-The choices should influence gold balance in small amounts (+/-25).
-Take previousChoices into account to progress a story arc with rising action, climax, falling action, and resolution.
-Return strictly JSON like this:
+You are a fantasy text adventure game master.
+Generate a short whimsical narrative prompt for a player (2 sentences).
+Do not include outcomes or results.
+Provide 3 short descriptive action names for buttons.
+For each choice, provide a gold change that makes sense according to the choice:
+- The gold loss cannot be more than the player's current balance (negative values between -${currentBalance} and 0)
+- Positive rewards should be reasonable, up to +25
+
+Return JSON like this:
 {
-  "prompt": "Short whimsical narrative prompt here.",
-  "choices": ["Choice 1", "Choice 2", "Choice 3"]
+  "prompt": "The narrative prompt text here",
+  "choices": [
+    { "text": "Choice 1 text", "gold": 10 },
+    { "text": "Choice 2 text", "gold": -5 },
+    { "text": "Choice 3 text", "gold": 20 }
+  ]
 }
-Use previousChoices: ${JSON.stringify(previousChoices)}
+
+Use previousChoices to influence context: ${JSON.stringify(previousChoices)}
 `;
 
   const response = await openai.chat.completions.create({
@@ -36,36 +42,41 @@ Use previousChoices: ${JSON.stringify(previousChoices)}
       { role: "system", content: "You are a fantasy adventure game master." },
       { role: "user", content: prompt }
     ],
-    max_tokens: 300
+    max_tokens: 400
   });
 
   try {
-    return JSON.parse(response.choices[0].message.content);
+    // Remove plus signs to make valid JSON
+    const content = response.choices[0].message.content.replace(/\+(\d+)/g, '$1');
+    return JSON.parse(content);
   } catch (err) {
     console.error("Failed to parse GPT response:", response.choices[0].message.content);
     return {
-      prompt: "A strange mist surrounds you, and a path appears.",
-      choices: ["Investigate mist", "Walk carefully", "Shout for help"]
+      prompt: "An error occurred generating the adventure.",
+      choices: [
+        { text: "Explore", gold: Math.min(5, currentBalance) },
+        { text: "Rest", gold: 0 },
+        { text: "Wait", gold: -Math.min(5, currentBalance) }
+      ]
     };
   }
 }
 
-// Render a node and handle button interaction
+// Render a node with buttons and show updated balance
 async function renderNode(interaction, userProfile, previousChoices = []) {
-  const nodeData = await generateNode(previousChoices);
+  const nodeData = await generateNode(previousChoices, userProfile.balance);
 
   const embed = new EmbedBuilder()
     .setTitle("Your Adventure")
-    .setDescription(nodeData.prompt)
+    .setDescription(`${nodeData.prompt}\n\n**Current Gold:** ${userProfile.balance}`)
     .setColor(0x1abc9c);
 
-  const buttons = nodeData.choices.map((choice, index) => {
-    const delta = Math.floor(Math.random() * 51) - 25; // Random gold change (-25 to +25)
-    return new ButtonBuilder()
-      .setCustomId(`choice_${index}_${delta}`)
-      .setLabel(choice)
-      .setStyle(delta >= 0 ? ButtonStyle.Success : ButtonStyle.Danger);
-  });
+  const buttons = nodeData.choices.map((choice, index) =>
+    new ButtonBuilder()
+      .setCustomId(`choice_${index}_${choice.gold}`)
+      .setLabel(choice.text)
+      .setStyle(choice.gold >= 0 ? ButtonStyle.Success : ButtonStyle.Danger)
+  );
 
   const row = new ActionRowBuilder().addComponents(buttons);
 
@@ -80,17 +91,21 @@ async function renderNode(interaction, userProfile, previousChoices = []) {
       return i.reply({ content: "This isn't your adventure!", ephemeral: true });
     }
 
-    const parts = i.customId.split("_");
-    const delta = parseInt(parts[2], 10);
-    userProfile.balance += delta;
+    const [_, choiceIndexStr, goldStr] = i.customId.split("_");
+    const choiceIndex = parseInt(choiceIndexStr, 10);
+    const delta = parseInt(goldStr, 10);
+
+    // Ensure gold cannot go below 0
+    const actualDelta = Math.max(-userProfile.balance, delta);
+
+    userProfile.balance += actualDelta;
     await userProfile.save();
 
-    previousChoices.push(nodeData.choices[parseInt(parts[1])]);
+    previousChoices.push(nodeData.choices[choiceIndex].text);
 
-    // Acknowledge button press without sending empty message
     await i.deferUpdate();
 
-    // Render next node
+    // Render next node with updated balance
     await renderNode(i, userProfile, previousChoices);
   });
 
