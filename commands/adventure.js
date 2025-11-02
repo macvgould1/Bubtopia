@@ -5,7 +5,7 @@ import UserProfile from "../schemas/UserProfile.js";
 
 export const data = {
   name: "adventure",
-  description: "Start a whimsical fantasy adventure"
+  description: "Start a chaotic whimsical fantasy adventure"
 };
 
 const openai = new OpenAI({
@@ -20,33 +20,31 @@ async function generateNode(previousChoices, lastChoice, currentBalance) {
   let outcomePart = "";
   if (lastChoice) {
     outcomePart = `
-Describe the consequence of your last choice: "${lastChoice.text}".
-Use second-person perspective ("you") and never reference "the player".
-Keep it short, whimsical, chaotic, fantastical, and simple.
-Write exactly three sentences:
-1. Describe how the previous choice affected your gold balance (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
-2. Progress the story in whimsical, brief, fantastical way that describes three unique actions for the player in the story context in 2 sentences.
-3. Do not tell the player how their choice will affect their balance or outcome. Never ask the player a question.
+Describe the outcome of your last choice: "${lastChoice.text}".
+Use "you" perspective.
+Keep it short, chaotic, fantastical, and simple.
+Write exactly 2 sentences:
+1. How your previous choice affected your gold (${lastChoice.gold >= 0 ? '+' : ''}${lastChoice.gold} gold).
+2. Progress the story in a short, chaotic, simple, fantastical way. Don't asking the player anything. Do not tell the player the gold outcomes of their future choices. Use very minimal words.
 `;
   }
 
   const prompt = `
-You are a whimsical fantasy adventure game master.
+You are a chaotic whimsical fantasy adventure game master.
 ${outcomePart}
 Now generate the next step:
-- 3-sentence narrative addressed to "you".
+- 2-sentence narrative addressed to "you".
 - 3 creative action choices:
-  * Each choice naturally ≤ 4 words.
-  * Assign a gold outcome for each choice that makes sense for the story context.
-  * Gold amounts can be any integer, positive or negative.
-* Negative gold can be as large as the player's current balance.
-* Positive gold can be up to 2 times the player's current balance.
-* Gold outcomes should make sense for the story, but can be large and chaotic.
+  * Each choice ≤ 4 words.
+  * Gold outcomes can be any integer, positive or negative.
+  * Negative gold cannot exceed current balance.
+  * Positive gold can be up to 2 times the player's current balance.
+  * Gold outcomes should fit the story context and be chaotic.
 Use previousChoices to continue the story: ${JSON.stringify(previousChoices)}
 
 Return strictly JSON in this format:
 {
-  "prompt": "Three whimsical, short sentences with choices embedded in the last sentence",
+  "prompt": "Three short chaotic whimsical sentences describing the story and next actions",
   "choices": [
     { "text": "Choice 1", "gold": 0 },
     { "text": "Choice 2", "gold": 0 },
@@ -59,10 +57,10 @@ Return strictly JSON in this format:
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a fantasy adventure game master." },
+        { role: "system", content: "You are a chaotic whimsical fantasy adventure game master." },
         { role: "user", content: prompt }
       ],
-      max_tokens: 350,
+      max_tokens: 250,
       temperature: 0.85
     });
 
@@ -78,11 +76,11 @@ Return strictly JSON in this format:
   } catch (err) {
     console.error("Failed to parse GPT response:", err);
     return {
-      prompt: "Something whimsical happens with the options Explore, Rest, Wait.",
+      prompt: "You stumble into a spinning rainbow. Three paths spin before you.",
       choices: [
-        { text: "Explore", gold: 0 },
-        { text: "Rest", gold: 0 },
-        { text: "Wait", gold: 0 }
+        { text: "Jump Forward", gold: Math.min(10, currentBalance) },
+        { text: "Duck Quickly", gold: 0 },
+        { text: "Spin Around", gold: -Math.min(5, currentBalance) }
       ]
     };
   }
