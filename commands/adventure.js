@@ -23,15 +23,45 @@ const storyElements = [
   "Brady Haslam",
   "Ethan Thomas Douglas",
   "Matthew Nightblood",
-  "Pepperoni Tony",
+  "Pepperoni Tony's Italian Pizzeria",
   "Big Pat",
   "Pat Fusty",
   "Lego figurines",
-  "Austin, The Toe Tickler",
+  "Matthew De'redita",
   "Big Austin",
   "Paul",
   "Gamer's Paradise",
-  "Dealmaster Dougie's Bargain Barn"
+  "A short dark figure holding a microphone and wearing a blue bandana",
+  "Bub's left toe",
+  "a small child",
+  "Obyn Greenfoot",
+  "Merle Ambrose",
+  "Bill Cosby",
+  "The Mayor of Flavor Town",
+  "Oprah Winfrey",
+  "Macaulay Vincent Alan Gould",
+  "Phineas and Ferb",
+  "Dealmaster Dougie's Bargain Barn",
+  "Marge Simpson",
+  "George W. Bush",
+  "Tony Soprano",
+  "Detroit",
+  "Memphis",
+  "Air Bud",
+  "Isaac Newton",
+  "Coach Quessenberry",
+  "Queen Elizabeth II",
+  "Joe Biden's Husband",
+  "Scott Douglas",
+  "Bernie Sanders",
+  "Bernie Sanders but Evil",
+  "Abraham Lincoln",
+  "Oda Nobunaga",
+  "Yung Lean",
+  "Barry Dillon",
+  "Bob Dylan",
+  "Naked Grandma",
+  "Steve Harvey"
 ];
 
 // In-memory session cache
@@ -70,7 +100,7 @@ Now generate the next step:
   * Assign a gold outcome for each choice (positive or negative).
   * Negative gold cannot exceed current balance.
   * Positive gold can be up to 2x current balance.
-  * Assume each choice has a 50/50 chance of success or failure, and gold outcomes should make sense for both outcomes.
+  * Ensure choices and their gold outcomes fit the chaotic whimsical tone.
 Use previousChoices to continue the story: ${JSON.stringify(previousChoices)}
 
 Return strictly JSON in this format:
@@ -132,12 +162,18 @@ async function renderNode(interaction, userProfile, previousChoices = [], lastCh
     .setDescription(`${nodeData.prompt}\n\n**Current Gold:** ${userProfile.balance}`)
     .setColor(0x1abc9c);
 
-  const buttons = nodeData.choices.map((choice, index) =>
-    new ButtonBuilder()
+  const buttons = nodeData.choices.map((choice, index) => {
+    // Determine style based on potential gold change
+    let style;
+    if (choice.gold > 0) style = ButtonStyle.Success; // green
+    else if (choice.gold < 0) style = ButtonStyle.Danger; // red
+    else style = ButtonStyle.Primary; // neutral blue
+
+    return new ButtonBuilder()
       .setCustomId(`choice_${index}`)
       .setLabel(choice.text)
-      .setStyle(ButtonStyle.Primary)
-  );
+      .setStyle(style);
+  });
 
   const row = new ActionRowBuilder().addComponents(buttons);
 
